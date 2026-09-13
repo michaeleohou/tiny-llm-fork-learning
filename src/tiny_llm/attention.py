@@ -105,7 +105,8 @@ def scaled_dot_product_attention_grouped(
             mask = mx.broadcast_to(mask, (*B, H_q, L, S))
             mask = mask.reshape(*B, H, n_repeats, L, S)
 
-    scores = scores + mask
+        scores = scores + mask
+        
     output = mx.matmul(softmax(scores, axis=-1), value)
     return output.reshape(expected_shape)
 
