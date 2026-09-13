@@ -67,7 +67,9 @@ class SimpleMultiHeadAttention:
 
 
 def causal_mask(L: int, S: int, dtype: mx.Dtype) -> mx.array:
-    pass
+    mask = mx.tril(mx.ones((L, S)), k=(S - L))
+    mask = mx.where(mask, mx.array(0), mx.array(-mx.inf)).astype(dtype)
+    return mask
 
 
 def scaled_dot_product_attention_grouped(
@@ -77,7 +79,33 @@ def scaled_dot_product_attention_grouped(
     scale: float | None = None,
     mask: mx.array | str | None = None,
 ) -> mx.array:
-    pass
+    factor = mx.rsqrt(query.shape[-1]) if scale is None else mx.array(scale)
+    factor = factor.astype(query.dtype)
+    expected_shape = query.shape
+
+    H_q, L, D = query.shape[-3:]
+    H, S, _ = key.shape[-3:]
+    B = query.shape[:-3]
+    assert H_q % H == 0, "Number of query heads must be divisible by the number of key/value heads"
+    n_repeats = H_q // H
+
+    query = query.reshape(*B, H, n_repeats, L, D)
+    key = key.reshape(*B, H, 1, S, D)
+    value = value.reshape(*B, H, 1, S, D)
+
+    scores = mx.matmul(query, key.swapaxes(-2, -1)) * factor
+    if isinstance(mask, str):
+        if mask != "causal":
+            raise ValueError(f"unsupported attention mask: {mask}")
+        if L > S:
+            raise ValueError("causal attention requires S >= L")
+        scores = scores + causal_mask(L, S, scores.dtype)
+    elif mask is not None:
+        mask = mx.broadcast_to(mask, (*B, H, 1, L, S))
+        scores = scores + mask
+
+    output = mx.matmul(softmax(scores, axis=-1), value)
+    return output.reshape(expected_shape)
 
 
 def paged_attention(
