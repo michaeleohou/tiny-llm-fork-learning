@@ -94,15 +94,16 @@ def scaled_dot_product_attention_grouped(
     value = value.reshape(*B, H, 1, S, D)
 
     scores = mx.matmul(query, key.swapaxes(-2, -1)) * factor
-    if isinstance(mask, str):
-        if mask != "causal":
-            raise ValueError(f"unsupported attention mask: {mask}")
-        if L > S:
-            raise ValueError("causal attention requires S >= L")
-        scores = scores + causal_mask(L, S, scores.dtype)
-    elif mask is not None:
-        mask = mx.broadcast_to(mask, (*B, H, 1, L, S))
-        scores = scores + mask
+    if mask is not None:
+        if isinstance(mask, str):
+            if mask != "causal":
+                raise ValueError(f"unsupported attention mask: {mask}")
+            if L > S:
+                raise ValueError("causal attention requires S >= L")
+            scores = scores + causal_mask(L, S, scores.dtype)
+        elif mask is not None:
+            mask = mx.broadcast_to(mask, (*B, H, 1, L, S))
+            scores = scores + mask
 
     output = mx.matmul(softmax(scores, axis=-1), value)
     return output.reshape(expected_shape)
